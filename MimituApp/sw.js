@@ -1,5 +1,5 @@
 // Mimitu PWA — service worker (offline-first, cache estática)
-const CACHE = 'mimitu-v5';
+const CACHE = 'mimitu-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -49,4 +49,23 @@ self.addEventListener('fetch', (e) => {
         .catch(() => caches.match('./index.html'));
     })
   );
+});
+
+// Web Push: mostrar la notificación que manda el backend
+self.addEventListener('push', (e) => {
+  let d = { title: 'Mimitu', body: '' };
+  try { d = e.data.json(); } catch (_) { if (e.data) d.body = e.data.text(); }
+  e.waitUntil(self.registration.showNotification(d.title || 'Mimitu', {
+    body: d.body || '',
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png'
+  }));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window' }).then((list) => {
+    for (const c of list) { if ('focus' in c) return c.focus(); }
+    return self.clients.openWindow('./');
+  }));
 });

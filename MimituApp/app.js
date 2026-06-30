@@ -177,6 +177,26 @@
     if (busy) return; busy = true;
     Promise.resolve(promise).then(function () { busy = false; }).catch(function (e) { busy = false; toast(apiError(e)); });
   }
+  /* Web Push: suscribe el navegador y manda la suscripción al backend */
+  function urlB64ToUint8Array(b64) {
+    var pad = '='.repeat((4 - (b64.length % 4)) % 4);
+    var s = (b64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+    var raw = atob(s); var arr = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+    return arr;
+  }
+  function subscribePush() {
+    if (!ONLINE || !('serviceWorker' in navigator) || !('PushManager' in window)) return Promise.resolve();
+    return navigator.serviceWorker.ready.then(function (reg) {
+      return API.push.vapid().then(function (r) {
+        if (!r || !r.publicKey) return;
+        return reg.pushManager.getSubscription().then(function (existing) {
+          if (existing) return existing;
+          return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8Array(r.publicKey) });
+        }).then(function (sub) { if (sub) return API.push.subscribe(sub.toJSON ? sub.toJSON() : sub); });
+      });
+    }).catch(function () {});
+  }
   function apiError(e) {
     var m = (e && e.message) || 'error';
     var map = { insufficient_balance: 'Saldo insuficiente', free_limit: 'Límite del plan gratuito', premium_required_to_create: 'Crear torneos es Premium', cannot_self_approve: 'No podés validar tu propia acción', content_rejected: '🚫 No pasó el filtro de contenido', code_not_found: 'Código no encontrado', couple_full: 'La pareja ya está completa', invalid_credentials: 'Email o contraseña incorrectos', email_in_use: 'Ese email ya existe, iniciá sesión' };
@@ -934,7 +954,11 @@
     'threshold': function (el) { S.threshold = parseInt(el.value, 10); save(); var b = el.parentNode.querySelector('b'); if (b) b.textContent = S.threshold; },
     'ask-notif': function () {
       if (typeof Notification === 'undefined') { S.notifPerm = 'unsupported'; toast('Este navegador no soporta notificaciones'); render(); return; }
-      Notification.requestPermission().then(function (p) { S.notifPerm = p; save(); render(); toast(p === 'granted' ? 'Notificaciones activadas ✓' : 'Permiso no concedido'); }).catch(function () {});
+      Notification.requestPermission().then(function (p) {
+        S.notifPerm = p; save();
+        if (p === 'granted' && ONLINE) { subscribePush().then(function () { render(); toast('Notificaciones activadas ✓'); }); }
+        else { render(); toast(p === 'granted' ? 'Notificaciones activadas ✓' : 'Permiso no concedido'); }
+      }).catch(function () {});
     },
     'add-member': function () { if (ONLINE) { toast('Tu 3er integrante se une con el código de la pareja (Premium)'); return; } openAddMember(); },
     'mem-emoji': function (el) { sheetState.memEmoji = el.dataset.em; highlightPick(el); },

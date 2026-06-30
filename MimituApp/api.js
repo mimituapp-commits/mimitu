@@ -75,6 +75,10 @@
       join: function (code) { return req('POST', '/tournaments/join', { code: code }); }
     },
     pushToken: function (token, platform) { return req('POST', '/push/token', { token: token, platform: platform }); },
+    push: {
+      vapid: function () { return req('GET', '/push/vapid'); },
+      subscribe: function (subscription) { return req('POST', '/push/subscribe', { subscription: subscription }); }
+    },
     entitlements: function () { return req('GET', '/entitlements'); },
     devPremium: function (on) { return req('POST', '/dev/premium', { premium: on }); },
     checkout: function () { return req('POST', '/billing/checkout'); },
