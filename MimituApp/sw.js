@@ -1,5 +1,5 @@
 // Mimitu PWA — service worker (offline-first, cache estática)
-const CACHE = 'mimitu-v4';
+const CACHE = 'mimitu-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -34,6 +34,9 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  var url = new URL(e.request.url);
+  // Nunca cachear la API: peticiones a otro origen (backend) o rutas /api/ van siempre a la red.
+  if (url.origin !== self.location.origin || url.pathname.indexOf('/api/') !== -1) return;
   e.respondWith(
     caches.match(e.request).then((cached) => {
       if (cached) return cached;
