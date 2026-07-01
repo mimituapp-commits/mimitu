@@ -635,6 +635,7 @@
       '</div></div>';
 
     if (ONLINE) {
+      html += '<button class="cta ghost" data-act="logout" style="margin-top:14px">Cerrar sesión</button>';
       html += '<div class="card" style="margin-top:12px;border-color:#f3c9d6"><div style="font-weight:800;font-size:14px;color:var(--red)">Eliminar mi cuenta</div><div class="tiny muted" style="margin-top:4px">Borra tus datos personales. El historial común se conserva anonimizado para tu pareja.</div><button class="mini ghost" data-act="delete-account" style="margin-top:10px;color:var(--red);border-color:#f3c9d6">Eliminar cuenta</button></div>';
     } else {
       html += '<button class="cta ghost" data-act="reset" style="margin-top:18px">Reiniciar datos de demo</button>';
@@ -1013,7 +1014,7 @@
     },
     'delete-account': function () {
       if (!confirm('¿Eliminar tu cuenta? Se borran tus datos personales. El historial común se conserva para tu pareja de forma anonimizada. Esta acción no se puede deshacer.')) return;
-      if (ONLINE) { net2(API.deleteAccount().then(function () { API.logout(); location.reload(); })); return; }
+      if (ONLINE) { net2(API.deleteAccount().then(function () { API.logout(); try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); })); return; }
       localStorage.removeItem(KEY); S = clone(DEFAULT); render();
     },
     'open-legal': function (el) { var u = el.dataset.u; try { window.open(u, '_blank'); } catch (e) { location.href = u; } },
@@ -1037,7 +1038,13 @@
     'add-member': function () { if (ONLINE) { toast('Tu 3er integrante se une con el código de la pareja (Premium)'); return; } openAddMember(); },
     'mem-emoji': function (el) { sheetState.memEmoji = el.dataset.em; highlightPick(el); },
     'save-member': function () { var n = val('mem-name').trim(); if (!n) { toast('Poné un nombre'); return; } S.members.push({ id: uid(), name: n, emoji: sheetState.memEmoji || '🌟', balance: 0, earned: 0 }); closeSheet(); render(); toast('Integrante agregado 👥'); },
-    'dissolve': function () { if (confirm(ONLINE ? '¿Salir de la relación? Vas a cerrar sesión en este dispositivo.' : '¿Disolver la relación? Se reinician los datos locales.')) { if (ONLINE) { API.logout(); location.reload(); return; } localStorage.removeItem(KEY); S = clone(DEFAULT); render(); } },
+    'logout': function () {
+      try { API.logout(); localStorage.removeItem(KEY); } catch (e) {}
+      S = clone(DEFAULT); MYID = null; _lastBal = null;
+      S.ob.step = 2; S.ob.age = true; S.ob.terms = true; /* volver directo a iniciar sesión */
+      closeSheet(); render(); toast('Sesión cerrada');
+    },
+    'dissolve': function () { if (confirm(ONLINE ? '¿Salir de la relación? Vas a cerrar sesión en este dispositivo.' : '¿Disolver la relación? Se reinician los datos locales.')) { if (ONLINE) { API.logout(); try { localStorage.removeItem(KEY); } catch (e) {} location.reload(); return; } localStorage.removeItem(KEY); S = clone(DEFAULT); render(); } },
     'reset': function () { if (confirm('¿Reiniciar todos los datos de demo?')) { if (ONLINE) { API.logout(); location.reload(); return; } localStorage.removeItem(KEY); S = clone(DEFAULT); render(); } }
   };
 
@@ -1094,9 +1101,16 @@
   document.addEventListener('click', function (e) { var el = e.target.closest('[data-act]'); if (!el) return; var a = el.dataset.act; if (handlers[a]) { e.preventDefault(); handlers[a](el); } });
   document.addEventListener('change', function (e) { var el = e.target.closest('[data-act]'); if (!el) return; var a = el.dataset.act; if ((a === 'ob-age' || a === 'ob-terms' || a === 'threshold' || a === 'reg-photo') && handlers[a]) handlers[a](el); });
 
-  if (ONLINE && API.getToken()) {
-    $app.innerHTML = '<div class="ob"><div class="spacer"></div><div class="brand" style="text-align:center">' + brandLockup() + '</div><p class="tag" style="text-align:center">Cargando…</p><div class="spacer"></div></div>';
-    pull().then(render).catch(function () { S.onboarded = false; render(); });
+  if (ONLINE) {
+    /* En online la sesión la define el token, no el estado local guardado.
+       Arrancamos siempre en Inicio y sin dar por hecho que hay sesión. */
+    S.view = 'home';
+    if (API.getToken()) {
+      $app.innerHTML = '<div class="ob"><div class="spacer"></div><div class="brand" style="text-align:center">' + brandLockup() + '</div><p class="tag" style="text-align:center">Cargando…</p><div class="spacer"></div></div>';
+      pull().then(render).catch(function () { S.onboarded = false; render(); });
+    } else {
+      S.onboarded = false; render();
+    }
   } else {
     render();
   }
