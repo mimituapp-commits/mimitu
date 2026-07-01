@@ -199,7 +199,7 @@
   }
   function apiError(e) {
     var m = (e && e.message) || 'error';
-    var map = { insufficient_balance: 'Saldo insuficiente', free_limit: 'Límite del plan gratuito', premium_required_to_create: 'Crear torneos es Premium', cannot_self_approve: 'No podés validar tu propia acción', content_rejected: '🚫 No pasó el filtro de contenido', code_not_found: 'Código no encontrado', couple_full: 'La pareja ya está completa', invalid_credentials: 'Email o contraseña incorrectos', email_in_use: 'Ese email ya existe, iniciá sesión' };
+    var map = { insufficient_balance: 'Saldo insuficiente', free_limit: 'Límite del plan gratuito', premium_required_to_create: 'Crear torneos es Premium', cannot_self_approve: 'No podés validar tu propia acción', content_rejected: '🚫 No pasó el filtro de contenido', code_not_found: 'Código no encontrado', couple_full: 'La pareja ya está completa', invalid_credentials: 'Email o contraseña incorrectos', email_in_use: 'Ese email ya existe, iniciá sesión', social_verify_failed: 'No se pudo validar con Google', google_aud_mismatch: 'Config de Google incorrecta', google_token_invalid: 'Token de Google inválido' };
     return map[m] || ('Error: ' + m);
   }
 
@@ -233,11 +233,13 @@
         '<label class="checkrow"><input type="checkbox" id="ck-terms"' + (S.ob.terms ? ' checked' : '') + ' data-act="ob-terms"> Acepto los <a class="linklike" href="legal/terminos.html" target="_blank">Términos</a> y la <a class="linklike" href="legal/privacidad.html" target="_blank">Política de privacidad</a>.</label>' +
         '<div class="spacer"></div><button class="cta gold" data-act="ob-toauth"' + (S.ob.age && S.ob.terms ? '' : ' disabled') + '>Continuar</button></div>';
     } else if (step === 2) {
+      var googleOn = ONLINE && window.MIMITU && window.MIMITU.googleClientId;
       html = '<div class="ob"><div class="back-link" data-act="ob-back">‹ Atrás</div><div class="spacer"></div>' +
         '<div class="brand" style="font-size:30px">' + brandLockup() + '</div>' +
         '<h2 style="text-align:center;margin-top:18px">Creá tu cuenta</h2>' +
-        '<button class="sso" data-act="ob-sso"><span class="g">G</span> Continuar con Google</button>' +
-        '<button class="sso apple" data-act="ob-sso"> Continuar con Apple</button>' +
+        (googleOn
+          ? '<div id="gbtn" style="display:flex;justify-content:center;margin-top:14px;min-height:44px"></div>'
+          : '<button class="sso" data-act="ob-sso"><span class="g">G</span> Continuar con Google</button><button class="sso apple" data-act="ob-sso"> Continuar con Apple</button>') +
         '<div class="divider">o con tu email</div>' +
         '<div class="field"><input class="input" id="ob-email" type="email" placeholder="tu@email.com"></div>' +
         '<div class="field"><input class="input" id="ob-pass" type="password" placeholder="Contraseña"></div>' +
@@ -274,6 +276,30 @@
         '<div class="spacer"></div><button class="cta gold" data-act="ob-finish">Vincular y entrar</button></div>';
     }
     $app.innerHTML = html;
+    if (S.ob.step === 2) mountGoogleButton();
+  }
+
+  /* Login con Google (GIS): renderiza el botón oficial y maneja el credential */
+  function mountGoogleButton() {
+    var cid = window.MIMITU && window.MIMITU.googleClientId;
+    if (!ONLINE || !cid) return;
+    (function go(tries) {
+      var el = document.getElementById('gbtn');
+      if (!el) return;
+      if (!(window.google && google.accounts && google.accounts.id)) { if (tries < 20) setTimeout(function () { go(tries + 1); }, 300); return; }
+      try {
+        google.accounts.id.initialize({ client_id: cid, callback: onGoogleCredential });
+        google.accounts.id.renderButton(el, { theme: 'filled_blue', size: 'large', shape: 'pill', text: 'continue_with', width: 300, locale: 'es' });
+      } catch (e) {}
+    })(0);
+  }
+  function onGoogleCredential(resp) {
+    if (!resp || !resp.credential || busy) return;
+    busy = true; toast('Ingresando con Google…');
+    API.auth.social({ provider: 'google', idToken: resp.credential })
+      .then(function () { return pull(); })
+      .then(function () { busy = false; if (S.onboarded) { S.view = 'home'; render(); } else { S.ob.step = 4; render(); } })
+      .catch(function (e) { busy = false; toast(apiError(e)); });
   }
   function pt(e, t) { return '<div class="pt"><span class="e">' + e + '</span><span>' + t + '</span></div>'; }
   function avatarRow(mid) {
