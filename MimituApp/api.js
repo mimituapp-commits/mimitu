@@ -9,14 +9,22 @@
   function getToken() { try { return localStorage.getItem(TKEY) || ''; } catch (e) { return ''; } }
   function setToken(t) { try { t ? localStorage.setItem(TKEY, t) : localStorage.removeItem(TKEY); } catch (e) {} }
 
+  /* Indicador de carga global: cuenta peticiones en curso y marca el body */
+  var pending = 0;
+  function netStart() { pending++; try { document.body && document.body.classList.add('net-busy'); } catch (e) {} }
+  function netEnd() { pending = Math.max(0, pending - 1); if (!pending) { try { document.body && document.body.classList.remove('net-busy'); } catch (e) {} } }
+
   async function req(method, path, body) {
     var headers = { 'Content-Type': 'application/json' };
     var tk = getToken();
     if (tk) headers.Authorization = 'Bearer ' + tk;
-    var res = await fetch(base() + path, { method: method, headers: headers, body: body ? JSON.stringify(body) : undefined });
-    var data = null; try { data = await res.json(); } catch (e) {}
-    if (!res.ok) { var err = new Error((data && data.error) || ('http_' + res.status)); err.status = res.status; err.body = data; throw err; }
-    return data;
+    netStart();
+    try {
+      var res = await fetch(base() + path, { method: method, headers: headers, body: body ? JSON.stringify(body) : undefined });
+      var data = null; try { data = await res.json(); } catch (e) {}
+      if (!res.ok) { var err = new Error((data && data.error) || ('http_' + res.status)); err.status = res.status; err.body = data; throw err; }
+      return data;
+    } finally { netEnd(); }
   }
 
   var API = {
@@ -32,6 +40,7 @@
       social: function (p) { return req('POST', '/auth/social', p).then(save); }
     },
     me: function () { return req('GET', '/me'); },
+    updateProfile: function (p) { return req('POST', '/me/profile', p); },
 
     couples: {
       create: function () { return req('POST', '/couples'); },

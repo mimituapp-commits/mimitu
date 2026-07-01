@@ -121,6 +121,8 @@
 
   var $app = document.getElementById('app');
   var $toast = document.getElementById('toast');
+  /* barra de carga global (se muestra sola cuando hay red en curso, ver api.js) */
+  try { if (!document.getElementById('busybar')) { var _bb = document.createElement('div'); _bb.id = 'busybar'; _bb.innerHTML = '<div class="bb-fill"></div>'; document.body.appendChild(_bb); } } catch (e) {}
   var toastT;
   function toast(msg) { $toast.textContent = msg; $toast.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { $toast.classList.remove('show'); }, 2300); }
 
@@ -296,7 +298,7 @@
   function onGoogleCredential(resp) {
     if (!resp || !resp.credential || busy) return;
     busy = true; toast('Ingresando con Google…');
-    API.auth.social({ provider: 'google', idToken: resp.credential, ageConfirmed: !!(S.ob && S.ob.age), name: (S.ob && S.ob.name) || '' })
+    API.auth.social({ provider: 'google', idToken: resp.credential, ageConfirmed: !!(S.ob && S.ob.age), name: (S.ob && S.ob.name) || '', emoji: (S.members[0] && S.members[0].emoji) || '💜' })
       .then(function () { return pull(); })
       .then(function () { busy = false; if (S.onboarded) { S.view = 'home'; render(); } else { S.ob.step = 4; render(); } })
       .catch(function (e) { busy = false; toast(apiError(e)); });
@@ -378,7 +380,6 @@
     html += '<div class="section-title">Actividad reciente</div>';
     var fp = S.feed.slice(0, 5);
     html += fp.length ? '<div class="feed">' + fp.map(feedItem).join('') + '</div>' : '<div class="empty">Todavía no hay gestos por aquí.<br>¿Quién rompe el hielo? 💜</div>';
-    if (!S.premium) html += '<div class="ad"><span class="adtag">AD</span> Espacio publicitario no intrusivo (zona fría). Premium lo elimina.</div>';
     return html;
   }
 
@@ -387,7 +388,7 @@
     if (S.members.length === 1) {
       var me1 = S.members[0];
       return '<div class="scoreboard"><div class="sb-title">Marcador de la pareja</div><div class="sb-row">' +
-        playerCol(me1, true) +
+        playerCol(me1, false) +
         '<div class="vs">vs</div>' +
         '<div class="player"><div class="avatar" style="border-style:dashed">＋</div><div class="pname">Tu pareja</div><div class="pscore">—</div><div class="punit">PENDIENTE</div></div>' +
         '</div><div class="difftxt">Compartí el código <b>' + esc(S.code || '') + '</b> para que se una 💌</div></div>';
@@ -564,7 +565,7 @@
     html += item('feed', '📜', 'Historial', 'Toda la actividad de la pareja');
     html += item('plan', '⭐', 'Plan ' + (S.premium ? 'Premium' : 'Gratuito'), 'Comparar y gestionar suscripción');
     html += item('settings', '⚙️', 'Ajustes y relación', 'Perfil, validación, integrantes');
-    html += '<div class="card" style="margin-top:16px"><div style="font-weight:800;font-size:14px">📲 Instalar Mimitu</div><div class="tiny muted" style="margin-top:6px">Android (Chrome): ⋮ → Instalar app. iPhone (Safari): Compartir → Agregar a pantalla de inicio.</div></div>';
+    html += '<div class="card" style="margin-top:16px"><div style="font-weight:800;font-size:14px">📲 Instalar Mimitu</div><div class="tiny muted" style="margin-top:6px">Android (Chrome): menú (3 puntitos) → Instalar app. iPhone (Safari): Compartir → Agregar a pantalla de inicio.</div></div>';
     return html;
   }
   function feedBody() {
@@ -596,15 +597,17 @@
     html += '<div class="card"><div style="font-weight:800;font-size:14px">Relación vinculada</div><div class="tiny muted" style="margin-top:6px">' +
       S.members.map(function (m) { return esc(m.emoji + ' ' + (m.name || '—')); }).join(' &nbsp;•&nbsp; ') + '</div><div class="tiny muted" style="margin-top:6px">Código: <b>' + esc(S.code || '—') + '</b></div></div>';
 
+    html += '<div class="card" style="margin-top:12px"><div style="font-weight:800;font-size:14px">Tu perfil</div><div class="tiny muted" style="margin-top:4px">Cambiá tu nombre y tu avatar cuando quieras.</div><button class="mini solid" data-act="edit-profile" style="margin-top:10px">' + esc(me().emoji + ' ' + (me().name || 'Yo')) + ' · Editar</button></div>';
+
     if (S.premium && S.members.length < 4) html += '<button class="cta ghost" data-act="add-member" style="margin-top:12px">+ Agregar integrante (Premium · 3+)</button>';
 
     if (S.premium) html += '<div class="card" style="margin-top:12px"><div style="font-weight:800;font-size:14px">Umbral de validación</div><div class="tiny muted" style="margin-top:4px">Acciones por encima de este valor requieren aprobación. Cualquiera propone; impacta al aceptar ambos.</div><div style="display:flex;align-items:center;gap:10px;margin-top:10px"><b style="font-size:20px;color:var(--magenta)">' + S.threshold + '</b><input type="range" min="10" max="60" step="5" value="' + S.threshold + '" data-act="threshold" style="flex:1;accent-color:var(--magenta)"></div></div>';
 
     html += '<div class="card" style="margin-top:12px"><div style="font-weight:800;font-size:14px">Notificaciones</div><div class="tiny muted" style="margin-top:4px">Validaciones, mimitus de tu pareja, fechas y pregunta diaria.</div><button class="mini solid" data-act="ask-notif" style="margin-top:10px">' + (S.notifPerm === 'granted' ? 'Activadas ✓' : 'Activar notificaciones') + '</button></div>';
 
-    html += '<div class="card" style="margin-top:12px"><div style="font-weight:800;font-size:14px">Cambiar de miembro (demo)</div><div class="tiny muted" style="margin-top:4px">En la app real cada persona usa su teléfono. Acá alternás para ver la validación de la pareja.</div><button class="mini solid" data-act="swap" style="margin-top:10px">Usando: ' + esc(me().emoji + ' ' + (me().name || 'Yo')) + ' ⇄</button></div>';
+    if (!ONLINE) html += '<div class="card" style="margin-top:12px"><div style="font-weight:800;font-size:14px">Cambiar de miembro (demo)</div><div class="tiny muted" style="margin-top:4px">En la app real cada persona usa su teléfono. Acá alternás para ver la validación de la pareja.</div><button class="mini solid" data-act="swap" style="margin-top:10px">Usando: ' + esc(me().emoji + ' ' + (me().name || 'Yo')) + ' ⇄</button></div>';
 
-    html += '<div class="card" style="margin-top:12px;border-color:#f3c9d6"><div style="font-weight:800;font-size:14px;color:var(--red)">Disolver relación</div><div class="tiny muted" style="margin-top:4px">El historial común se conserva para quien permanece; las contribuciones de quien se va se anonimizan. (En la demo reinicia todo.)</div><button class="mini ghost" data-act="dissolve" style="margin-top:10px;color:var(--red);border-color:#f3c9d6">Disolver</button></div>';
+    html += '<div class="card" style="margin-top:12px;border-color:#f3c9d6"><div style="font-weight:800;font-size:14px;color:var(--red)">Disolver relación</div><div class="tiny muted" style="margin-top:4px">El historial común se conserva para quien permanece; las contribuciones de quien se va se anonimizan.' + (ONLINE ? '' : ' (En la demo reinicia todo.)') + '</div><button class="mini ghost" data-act="dissolve" style="margin-top:10px;color:var(--red);border-color:#f3c9d6">Disolver</button></div>';
 
     html += '<div class="card" style="margin-top:12px"><div style="font-weight:800;font-size:14px">Legales</div>' +
       '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">' +
@@ -687,7 +690,8 @@
     sheetState = { caEmoji: '✨' };
   }
   function openAnswerDQ() {
-    openSheet('<h3>Pregunta del día</h3><div class="dq-q" style="margin-top:6px">' + esc(QUESTIONS[S.dq.qi]) + '</div>' +
+    var dqQ = ONLINE ? (S.dqText || '') : QUESTIONS[S.dq.qi];
+    openSheet('<h3>Pregunta del día</h3><div class="dq-q" style="margin-top:6px">' + esc(dqQ) + '</div>' +
       '<p class="tiny muted" style="margin-top:8px">Tu respuesta queda oculta hasta que ambos respondan 🔒</p>' +
       '<div class="field-l"><textarea class="tinput" id="dq-ans" placeholder="Escribí tu respuesta..."></textarea></div>' +
       '<button class="cta" data-act="save-dq" style="margin-top:8px">Responder (+5 mimitus)</button>');
@@ -738,6 +742,13 @@
       '<div class="field-l"><label>Nombre</label><input class="tinput" id="mem-name" placeholder="Nombre"></div>' +
       '<button class="cta" data-act="save-member" style="margin-top:12px">Agregar</button>');
     sheetState = { memEmoji: AVATARS[0] };
+  }
+  function openEditProfile() {
+    openSheet('<h3>Editar perfil</h3><p class="tiny muted">Cambiá tu nombre y tu avatar.</p>' +
+      '<div class="field-l"><label>Tu nombre</label><input class="tinput" id="ep-name" value="' + esc(me().name || '') + '"></div>' +
+      '<div class="field-l"><label>Tu avatar</label><div style="display:flex;gap:8px;flex-wrap:wrap">' + AVATARS.map(function (e) { return pickBtn('ep-emoji', e, e === me().emoji); }).join('') + '</div></div>' +
+      '<button class="cta" data-act="save-profile" style="margin-top:14px">Guardar cambios</button>');
+    sheetState = { epEmoji: me().emoji };
   }
   function openTournament(id) {
     var t = S.tournaments.filter(function (x) { return x.id === id; })[0]; if (!t) return;
@@ -792,15 +803,20 @@
       S.members[0].name = n;
       if (ONLINE) {
         var p;
-        if (S.ob.method === 'email') p = API.auth.register({ email: S.ob.email, password: S.ob.pass, name: n, ageConfirmed: true, termsAccepted: true });
-        else p = API.auth.social({ provider: S.ob.method || 'google', idToken: 'dev_' + n + '_' + Date.now(), name: n, ageConfirmed: true });
+        if (S.ob.method === 'email') p = API.auth.register({ email: S.ob.email, password: S.ob.pass, name: n, emoji: S.members[0].emoji, ageConfirmed: true, termsAccepted: true });
+        else p = API.auth.social({ provider: S.ob.method || 'google', idToken: 'dev_' + n + '_' + Date.now(), name: n, emoji: S.members[0].emoji, ageConfirmed: true });
         if (busy) return; busy = true;
         Promise.resolve(p).then(function () { busy = false; S.ob.step = 4; render(); }).catch(function (e) { busy = false; if (e && e.message === 'email_in_use' && S.ob.method === 'email') { return API.auth.login({ email: S.ob.email, password: S.ob.pass }).then(function () { S.ob.step = 4; render(); }); } toast(apiError(e)); });
         return;
       }
       S.ob.step = 4; render();
     },
-    'ob-avatar': function (el) { byId(el.dataset.mid).emoji = el.dataset.em; render(); },
+    'ob-avatar': function (el) {
+      /* preservar lo tipeado antes de re-renderizar (evita perder el nombre) */
+      var nm = document.getElementById('ob-name'); if (nm) S.members[0].name = nm.value;
+      var pn = document.getElementById('ob-pname'); if (pn && S.members[1]) S.members[1].name = pn.value;
+      byId(el.dataset.mid).emoji = el.dataset.em; render();
+    },
     'ob-invite': function () {
       S.ob.path = 'invite';
       if (ONLINE) { net2(API.couples.create().then(function (r) { S.code = r.couple.code; S.ob.step = 5; render(); })); return; }
@@ -823,7 +839,7 @@
     },
 
     /* nav */
-    'view': function (el) { S.view = el.dataset.v; if (ONLINE) { net(Promise.resolve()); } else render(); },
+    'view': function (el) { S.view = el.dataset.v; render(); if (ONLINE) { Promise.resolve(pull()).then(function () { render(); }).catch(function () {}); } },
     'notifs': function () { openNotifs(); },
     'close-render': function () { closeSheet(); render(); },
     'close-sheet': function () { closeSheet(); if (S.view !== 'home' && (sheetState && sheetState.step === 3)) { S.view = 'home'; } render(); },
@@ -985,6 +1001,14 @@
         if (p === 'granted' && ONLINE) { subscribePush().then(function () { render(); toast('Notificaciones activadas ✓'); }); }
         else { render(); toast(p === 'granted' ? 'Notificaciones activadas ✓' : 'Permiso no concedido'); }
       }).catch(function () {});
+    },
+    'edit-profile': function () { openEditProfile(); },
+    'ep-emoji': function (el) { sheetState.epEmoji = el.dataset.em; highlightPick(el); },
+    'save-profile': function () {
+      var n = val('ep-name').trim(); var em = (sheetState && sheetState.epEmoji) || me().emoji;
+      if (!n) { toast('Escribí tu nombre'); return; }
+      if (ONLINE) { closeSheet(); net(API.updateProfile({ name: n, emoji: em }), 'Perfil actualizado ✓'); return; }
+      me().name = n; me().emoji = em; closeSheet(); render(); toast('Perfil actualizado ✓');
     },
     'add-member': function () { if (ONLINE) { toast('Tu 3er integrante se une con el código de la pareja (Premium)'); return; } openAddMember(); },
     'mem-emoji': function (el) { sheetState.memEmoji = el.dataset.em; highlightPick(el); },
