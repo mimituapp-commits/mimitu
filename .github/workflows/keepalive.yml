@@ -1,0 +1,29 @@
+name: keep-alive
+
+# Mantiene despierto el backend gratuito de Render haciéndole ping al health check.
+# Render "duerme" el servicio tras ~15 min sin tráfico; este workflow lo pinguea cada 10 min.
+# Repos públicos: minutos de Actions ilimitados. No requiere cuentas ni servicios extra.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # cada 10 minutos (GitHub puede demorarlo unos minutos bajo carga)
+  workflow_dispatch:          # permite ejecutarlo a mano desde la pestaña Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health
+        run: |
+          URL="https://mimitu-api.onrender.com/api/health"
+          for i in 1 2 3 4; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 "$URL" || echo "000")
+            echo "Intento $i -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "Backend despierto ✅"
+              exit 0
+            fi
+            sleep 25
+          done
+          echo "No respondió 200 (puede estar arrancando). No falla el workflow."
+          exit 0
