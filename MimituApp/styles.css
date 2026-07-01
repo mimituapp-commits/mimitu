@@ -291,3 +291,8 @@ body.net-busy #busybar{opacity:1}
   #app{max-width:460px;min-height:100vh;box-shadow:0 24px 70px rgba(82,56,214,.22);border-left:1px solid var(--line);border-right:1px solid var(--line)}
   .nav{box-shadow:0 -2px 20px rgba(82,56,214,.10)}
 }
+
+/* Handle de arrastre de la hoja (swipe-to-close) */
+.sheet .grab{cursor:grab;touch-action:none;position:relative}
+.sheet .grab::after{content:"";position:absolute;left:0;right:0;top:-12px;height:28px}
+.sheet{will-change:transform}

@@ -648,8 +648,44 @@
      SHEETS
      ============================================================ */
   var sheetState = null;
-  function openSheet(html) { closeSheet(); var s = document.createElement('div'); s.className = 'scrim'; s.id = 'scrim'; s.innerHTML = '<div class="sheet"><div class="grab"></div>' + html + '</div>'; document.body.appendChild(s); s.addEventListener('click', function (e) { if (e.target === s) closeSheet(); }); }
+  function openSheet(html) { closeSheet(); var s = document.createElement('div'); s.className = 'scrim'; s.id = 'scrim'; s.innerHTML = '<div class="sheet"><div class="grab"></div>' + html + '</div>'; document.body.appendChild(s); s.addEventListener('click', function (e) { if (e.target === s) closeSheet(); }); attachSheetDrag(s); }
   function closeSheet() { var s = document.getElementById('scrim'); if (s) s.remove(); }
+  /* Arrastrar la hoja hacia abajo para cerrarla (gesto nativo) */
+  function attachSheetDrag(scrim) {
+    var sheet = scrim.querySelector('.sheet');
+    var grab = scrim.querySelector('.grab');
+    if (!sheet) return;
+    var startY = 0, dy = 0, dragging = false;
+    sheet.addEventListener('pointerdown', function (e) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      var fromGrab = grab && (e.target === grab || grab.contains(e.target));
+      if (!fromGrab) {
+        /* no arrancar el gesto desde controles ni cuando el contenido está scrolleado */
+        if (e.target.closest && e.target.closest('input,textarea,select,button,a,[data-act]')) return;
+        if (sheet.scrollTop > 0) return;
+      }
+      dragging = true; startY = e.clientY; dy = 0;
+      sheet.style.transition = 'none';
+      try { sheet.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    sheet.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      dy = e.clientY - startY;
+      if (dy <= 0) { sheet.style.transform = 'translateY(0)'; scrim.style.background = ''; return; }
+      if (e.cancelable) e.preventDefault();
+      sheet.style.transform = 'translateY(' + dy + 'px)';
+      scrim.style.background = 'rgba(31,24,51,' + Math.max(0.06, 0.5 - dy / 800) + ')';
+    }, { passive: false });
+    function end() {
+      if (!dragging) return;
+      dragging = false;
+      sheet.style.transition = 'transform .26s cubic-bezier(.4,0,.2,1)';
+      if (dy > 110) { sheet.style.transform = 'translateY(100%)'; setTimeout(closeSheet, 230); }
+      else { sheet.style.transform = 'translateY(0)'; scrim.style.background = ''; }
+    }
+    sheet.addEventListener('pointerup', end);
+    sheet.addEventListener('pointercancel', end);
+  }
 
   function openRegister() { sheetState = { step: 1, actionId: null, note: '', photo: null }; renderRegister(); }
   function renderRegister() {
