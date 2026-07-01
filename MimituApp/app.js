@@ -149,6 +149,7 @@
   var ONLINE = !!(API && API.enabled());
   var MYID = null;
   var busy = false;
+  var _lastBal = null; /* para animar el marcador cuando suben tus mimitus */
 
   async function pull() {
     var meR = await API.me();
@@ -300,7 +301,7 @@
     busy = true; toast('Ingresando con Google…');
     API.auth.social({ provider: 'google', idToken: resp.credential, ageConfirmed: !!(S.ob && S.ob.age), name: (S.ob && S.ob.name) || '', emoji: (S.members[0] && S.members[0].emoji) || '💜' })
       .then(function () { return pull(); })
-      .then(function () { busy = false; if (S.onboarded) { S.view = 'home'; render(); } else { S.ob.step = 4; render(); } })
+      .then(function () { busy = false; if (S.onboarded) { S.view = 'home'; render(); } else { S.ob.socialProfile = true; S.ob.step = 3; render(); } })
       .catch(function (e) { busy = false; toast(apiError(e)); });
   }
   function pt(e, t) { return '<div class="pt"><span class="e">' + e + '</span><span>' + t + '</span></div>'; }
@@ -326,6 +327,11 @@
       '<div class="screen">' + screenBody() + '</div>' + navBar();
     $app.innerHTML = html;
     var sc = $app.querySelector('.screen'); if (sc) sc.scrollTop = 0;
+    try {
+      var _ms = document.getElementById('me-score');
+      if (_ms && _lastBal != null && m.balance > _lastBal) { void _ms.offsetWidth; _ms.classList.add('bumped'); }
+      _lastBal = m.balance;
+    } catch (e) {}
   }
   function screenBody() {
     switch (S.view) {
@@ -353,7 +359,18 @@
 
   /* ---------------- HOME ---------------- */
   function homeBody() {
-    var html = scoreboard();
+    var html = '';
+    /* Estado explícito cuando la pareja todavía no se vinculó */
+    if (S.members.length === 1) {
+      html += '<div class="invite-banner">' +
+        '<div class="ib-emoji">🔗</div>' +
+        '<div class="ib-title">Esperando a tu pareja</div>' +
+        '<div class="ib-sub">Compartí este código para que se una y arranque el juego 💞</div>' +
+        '<div class="ib-code">' + esc(S.code || '') + '</div>' +
+        '<button class="cta gold" data-act="ob-share" style="margin-top:12px">Compartir invitación</button>' +
+        '</div>';
+    }
+    html += scoreboard();
     html += '<button class="cta" data-act="register">+ Registrar una acción</button>';
     // quick actions
     var quick = allActions().filter(function (x) { return x.value <= S.threshold; }).slice(0, 3);
@@ -379,7 +396,8 @@
     // feed preview
     html += '<div class="section-title">Actividad reciente</div>';
     var fp = S.feed.slice(0, 5);
-    html += fp.length ? '<div class="feed">' + fp.map(feedItem).join('') + '</div>' : '<div class="empty">Todavía no hay gestos por aquí.<br>¿Quién rompe el hielo? 💜</div>';
+    html += fp.length ? '<div class="feed">' + fp.map(feedItem).join('') + '</div>'
+      : '<div class="empty">Todavía no hay gestos por aquí.<br>¿Rompemos el hielo? 💜<button class="cta" data-act="register" style="max-width:260px;margin:16px auto 0">Registrar tu primer gesto</button></div>';
     return html;
   }
 
@@ -412,7 +430,7 @@
   function playerCol(m, lead) {
     return '<div class="player"><div class="avatar ' + (lead ? 'lead' : '') + '">' + m.emoji + '</div>' +
       '<div class="pname">' + esc(m.name || (m.id === 'a' ? 'Vos' : 'Pareja')) + '</div>' +
-      '<div class="pscore">' + m.balance + '</div><div class="punit">MIMITUS</div>' +
+      '<div class="pscore"' + (m.id === S.active ? ' id="me-score"' : '') + '>' + m.balance + '</div><div class="punit">MIMITUS</div>' +
       (lead ? '<div class="badge">👑 Lidera</div>' : '') + '</div>';
   }
   function feedItem(f) {
@@ -802,6 +820,12 @@
       var n = val('ob-name').trim(); if (!n) { toast('Escribí tu nombre'); return; }
       S.members[0].name = n;
       if (ONLINE) {
+        if (S.ob.socialProfile) {
+          /* usuario de Google ya registrado: solo guardamos nombre/avatar */
+          if (busy) return; busy = true;
+          API.updateProfile({ name: n, emoji: S.members[0].emoji }).then(function () { busy = false; S.ob.socialProfile = false; S.ob.step = 4; render(); }).catch(function (e) { busy = false; toast(apiError(e)); });
+          return;
+        }
         var p;
         if (S.ob.method === 'email') p = API.auth.register({ email: S.ob.email, password: S.ob.pass, name: n, emoji: S.members[0].emoji, ageConfirmed: true, termsAccepted: true });
         else p = API.auth.social({ provider: S.ob.method || 'google', idToken: 'dev_' + n + '_' + Date.now(), name: n, emoji: S.members[0].emoji, ageConfirmed: true });
@@ -980,7 +1004,7 @@
         if (S.premium) { toast('Gestioná o cancelá tu suscripción desde Mercado Pago'); return; }
         if (busy) return; busy = true;
         API.checkout().then(function (r) {
-          if (r.mock) { return API.devPremium(true).then(pull).then(function () { busy = false; render(); toast('Premium activado ⭐ (demo)'); }); }
+          if (r.mock) { return API.devPremium(true).then(pull).then(function () { busy = false; render(); toast('Premium activado ⭐'); }); }
           busy = false; toast('Redirigiendo a Mercado Pago…'); location.href = r.url;
         }).catch(function (e) { busy = false; toast(apiError(e)); });
         return;
@@ -1013,7 +1037,7 @@
     'add-member': function () { if (ONLINE) { toast('Tu 3er integrante se une con el código de la pareja (Premium)'); return; } openAddMember(); },
     'mem-emoji': function (el) { sheetState.memEmoji = el.dataset.em; highlightPick(el); },
     'save-member': function () { var n = val('mem-name').trim(); if (!n) { toast('Poné un nombre'); return; } S.members.push({ id: uid(), name: n, emoji: sheetState.memEmoji || '🌟', balance: 0, earned: 0 }); closeSheet(); render(); toast('Integrante agregado 👥'); },
-    'dissolve': function () { if (confirm('¿Disolver la relación? En la demo reinicia todo.')) { if (ONLINE) { API.logout(); location.reload(); return; } localStorage.removeItem(KEY); S = clone(DEFAULT); render(); } },
+    'dissolve': function () { if (confirm(ONLINE ? '¿Salir de la relación? Vas a cerrar sesión en este dispositivo.' : '¿Disolver la relación? Se reinician los datos locales.')) { if (ONLINE) { API.logout(); location.reload(); return; } localStorage.removeItem(KEY); S = clone(DEFAULT); render(); } },
     'reset': function () { if (confirm('¿Reiniciar todos los datos de demo?')) { if (ONLINE) { API.logout(); location.reload(); return; } localStorage.removeItem(KEY); S = clone(DEFAULT); render(); } }
   };
 
