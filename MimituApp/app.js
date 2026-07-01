@@ -673,7 +673,7 @@
         '<div class="field-l"><label>Nota para tu pareja (opcional)</label><textarea class="tinput" id="reg-note" placeholder="Ej: ¡con postre incluido!">' + esc(st.note) + '</textarea></div>' +
         '<div class="field-l"><label>Foto de evidencia (opcional)</label>' +
         (st.photo ? '<div class="photo-prev"><img src="' + st.photo + '" alt="evidencia"><button class="photo-x" data-act="reg-photo-clear">✕</button></div>'
-          : '<label class="photo-add"><input type="file" accept="image/*" capture="environment" id="reg-photo" data-act="reg-photo" hidden>📷 Agregar foto</label>') +
+          : '<label class="photo-add"><input type="file" accept="image/*" id="reg-photo" data-act="reg-photo" hidden>📷 Agregar foto</label>') +
         '<div class="tiny muted" style="margin-top:6px">Útil para que tu pareja valide acciones de alto valor. Se guarda cifrada (en producción).</div></div>' +
         '<div class="pill" style="display:block;text-align:center">' + (honor ? '✅ Se acredita al instante (≤ ' + S.threshold + ', por honor)' : '⏳ Supera ' + S.threshold + ': tu pareja deberá aprobarla') + '</div>' +
         '<button class="cta green" data-act="confirm-action">' + (honor ? 'Sumar mimitus' : 'Enviar para aprobación') + '</button>' +
@@ -1098,7 +1098,13 @@
       '<button class="cta" data-act="close-sheet" style="margin-top:18px">Listo</button>');
   }
 
-  document.addEventListener('click', function (e) { var el = e.target.closest('[data-act]'); if (!el) return; var a = el.dataset.act; if (handlers[a]) { e.preventDefault(); handlers[a](el); } });
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-act]'); if (!el) return;
+    /* Los inputs (archivo/checkbox/slider) se manejan en 'change', no acá:
+       hacerles preventDefault cancelaría, p.ej., la apertura del selector de foto. */
+    if (el.tagName === 'INPUT' && (el.type === 'file' || el.type === 'checkbox' || el.type === 'range')) return;
+    var a = el.dataset.act; if (handlers[a]) { e.preventDefault(); handlers[a](el); }
+  });
   document.addEventListener('change', function (e) { var el = e.target.closest('[data-act]'); if (!el) return; var a = el.dataset.act; if ((a === 'ob-age' || a === 'ob-terms' || a === 'threshold' || a === 'reg-photo') && handlers[a]) handlers[a](el); });
 
   if (ONLINE) {

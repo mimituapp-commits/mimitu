@@ -1,5 +1,5 @@
 // Mimitu PWA — service worker (offline-first, cache estática)
-const CACHE = 'mimitu-v11';
+const CACHE = 'mimitu-v12';
 const ASSETS = [
   './',
   './index.html',
