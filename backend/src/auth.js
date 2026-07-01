@@ -34,7 +34,16 @@ function authMiddleware(store) {
  */
 async function verifySocial(provider, idToken) {
   if (process.env.SOCIAL_VERIFY === 'real') {
-    throw new Error('Configurar verificación real de ' + provider + ' (ver comentarios en auth.js)');
+    if (provider === 'google') {
+      // Verifica el id_token de Google contra el endpoint tokeninfo y valida el aud.
+      const res = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken || ''));
+      if (!res.ok) throw new Error('google_token_invalid');
+      const info = await res.json();
+      if (!process.env.GOOGLE_CLIENT_ID || info.aud !== process.env.GOOGLE_CLIENT_ID) throw new Error('google_aud_mismatch');
+      if (info.email_verified !== 'true' && info.email_verified !== true) throw new Error('google_email_unverified');
+      return { email: info.email, name: info.name || '', emailVerified: true };
+    }
+    throw new Error('provider_not_supported');
   }
   // modo dev: deriva un email estable a partir del token
   const hash = crypto.createHash('sha256').update(String(idToken || '')).digest('hex').slice(0, 10);
