@@ -296,7 +296,7 @@
   function onGoogleCredential(resp) {
     if (!resp || !resp.credential || busy) return;
     busy = true; toast('Ingresando con Google…');
-    API.auth.social({ provider: 'google', idToken: resp.credential })
+    API.auth.social({ provider: 'google', idToken: resp.credential, ageConfirmed: !!(S.ob && S.ob.age), name: (S.ob && S.ob.name) || '' })
       .then(function () { return pull(); })
       .then(function () { busy = false; if (S.onboarded) { S.view = 'home'; render(); } else { S.ob.step = 4; render(); } })
       .catch(function (e) { busy = false; toast(apiError(e)); });
