@@ -58,7 +58,10 @@ function coupleOf(user) { return user.coupleId ? C().findOne((c) => c.id === use
 function membersOf(couple) { return couple ? U().find((u) => u.coupleId === couple.id) : []; }
 function partnerTokens(couple, exceptUserId) {
   const ids = membersOf(couple).filter((u) => u.id !== exceptUserId).map((u) => u.id);
-  return PT().find((t) => ids.indexOf(t.userId) !== -1).map((t) => t.token);
+  return PT().find((t) => ids.indexOf(t.userId) !== -1 && t.sub).map((t) => t.sub);
+}
+function coupleSubs(couple) {
+  return membersOf(couple).flatMap((m) => PT().find((t) => t.userId === m.id && t.sub).map((t) => t.sub));
 }
 function pushFeed(couple, entry) { entry.id = uid('f_'); entry.coupleId = couple.id; entry.ts = now(); F().insert(entry); return entry; }
 function isPremium(couple) { return !!(couple && couple.premium); }
@@ -70,11 +73,11 @@ function requireCouple(req, res) { const c = coupleOf(req.user); if (!c) { res.s
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: now(), store: store.isPostgres ? 'postgres' : 'json' }));
 
 app.post('/api/auth/register', async (req, res) => {
-  const { email, password, name, ageConfirmed, termsAccepted } = req.body || {};
+  const { email, password, name, emoji, ageConfirmed, termsAccepted } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: 'email_password_required' });
   if (!ageConfirmed || !termsAccepted) return res.status(400).json({ error: 'age_terms_required' });
   if (U().findOne((u) => u.email === email)) return res.status(409).json({ error: 'email_in_use', hint: 'login_or_link' });
-  const user = U().insert({ id: uid('u_'), email, name: name || '', emoji: '💜', passwordHash: bcrypt.hashSync(password, 10), provider: 'email', ageConfirmed: true, balance: 0, earned: 0, coupleId: null, createdAt: now() });
+  const user = U().insert({ id: uid('u_'), email, name: name || '', emoji: emoji || '💜', passwordHash: bcrypt.hashSync(password, 10), provider: 'email', ageConfirmed: true, balance: 0, earned: 0, coupleId: null, createdAt: now() });
   res.json({ token: sign(user), user: publicUser(user) });
 });
 
@@ -89,7 +92,7 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 app.post('/api/auth/social', async (req, res) => {
-  const { provider, idToken, name, ageConfirmed } = req.body || {};
+  const { provider, idToken, name, emoji, ageConfirmed } = req.body || {};
   if (['google', 'apple'].indexOf(provider) === -1) return res.status(400).json({ error: 'bad_provider' });
   let prof;
   try { prof = await verifySocial(provider, idToken); } catch (e) { return res.status(401).json({ error: 'social_verify_failed', detail: e.message }); }
@@ -100,11 +103,22 @@ app.post('/api/auth/social', async (req, res) => {
     return res.json({ token: sign(user), user: publicUser(user), linked: true });
   }
   if (!ageConfirmed) return res.status(400).json({ error: 'age_required', hint: 'confirm_18_after_social' });
-  user = U().insert({ id: uid('u_'), email: prof.email, name: name || prof.name || '', emoji: '💜', provider, ageConfirmed: true, balance: 0, earned: 0, coupleId: null, createdAt: now() });
+  user = U().insert({ id: uid('u_'), email: prof.email, name: name || prof.name || '', emoji: emoji || '💜', provider, ageConfirmed: true, balance: 0, earned: 0, coupleId: null, createdAt: now() });
   res.json({ token: sign(user), user: publicUser(user) });
 });
 
 app.get('/api/me', auth, (req, res) => res.json({ user: publicUser(req.user), couple: summaryCouple(coupleOf(req.user)) }));
+
+/* Editar perfil: nombre y avatar (emoji) */
+app.post('/api/me/profile', auth, (req, res) => {
+  const { name, emoji } = req.body || {};
+  const patch = {};
+  if (typeof name === 'string' && name.trim()) patch.name = name.trim().slice(0, 40);
+  if (typeof emoji === 'string' && emoji) patch.emoji = emoji.slice(0, 8);
+  if (Object.keys(patch).length) U().update((u) => u.id === req.user.id, patch);
+  const fresh = U().findOne((u) => u.id === req.user.id);
+  res.json({ user: publicUser(fresh) });
+});
 
 /* ============================================================
    COUPLES
@@ -347,6 +361,19 @@ app.post('/api/push/token', auth, (req, res) => {
   res.json({ ok: true });
 });
 
+// Web Push: clave pública VAPID (no secreta) para que el navegador se suscriba
+app.get('/api/push/vapid', (req, res) => res.json({ publicKey: process.env.VAPID_PUBLIC || '' }));
+
+// Web Push: guardar la suscripción del navegador del usuario
+app.post('/api/push/subscribe', auth, (req, res) => {
+  const sub = req.body && req.body.subscription;
+  if (!sub || !sub.endpoint) return res.status(400).json({ error: 'no_subscription' });
+  if (!PT().findOne((t) => t.userId === req.user.id && t.sub && t.sub.endpoint === sub.endpoint)) {
+    PT().insert({ id: uid('pt_'), userId: req.user.id, sub: sub, ts: now() });
+  }
+  res.json({ ok: true });
+});
+
 /* ============================================================
    PAGOS — RevenueCat (StoreKit + Google Play Billing)
    El entitlement Premium se comparte por PAREJA (no por usuario).
@@ -369,7 +396,7 @@ app.post('/api/webhooks/revenuecat', express.json({ type: '*/*' }), (req, res) =
   else if (inactive.indexOf(ev.type) !== -1) patch = { premium: false, premiumUntil: ev.expiration_at_ms || now() };
   if (patch) {
     C().update((c) => c.id === couple.id, patch);
-    sendPush(membersOf(couple).flatMap((m) => PT().find((t) => t.userId === m.id).map((t) => t.token)), 'Mimitu', patch.premium ? 'Premium activado ⭐ (para ambos)' : 'Tu Premium finalizó');
+    sendPush(coupleSubs(couple), 'Mimitu', patch.premium ? 'Premium activado ⭐ (para ambos)' : 'Tu Premium finalizó');
   }
   res.json({ ok: true });
 });
